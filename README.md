@@ -8,9 +8,12 @@ IS ON renders labels and thumbnails in eSlide Manager, assists VM team with addi
 	
 IS OFF removes locks on image files to allow VM team rename files, move files into their preferred organizational hierarchy
 
-CMD: 'powershell' to start interpreter.
-CMD: 'exit' to return.
+CMD: 'powershell' to start interpreter
+
+CMD: 'exit' to return
+
 Navigate to folder containing script
+
 To execute as Powershell script, change extension to "ps1"
 .\ImgSrvRemoteControl.ps1
 

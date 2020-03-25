@@ -1,0 +1,102 @@
+# Stop or Start execution of Aperio ImageServer (IS) on DSR (R1PWBPCIMGDSR01).
+# IS ON renders labels and thumbnails in eSlide Manager, assists VM team with adding slide metadata, 
+#	but places lock on image file in storage share, blocking moves/edits
+# IS OFF removes lock on image files to allow VM team rename files, move files into their preferred organizational hierarchy
+#
+# | more
+# 
+# CMD: 'powershell' to start interpreter
+# CMD: 'exit' to return
+# To execute as Powershell script, change extension to "ps1"
+#
+# Make sure Execution Policy on system is set to allow script execution !!
+#
+# If current user not running elevated privileges, Powershell will not start in administrator mode.
+# To pass current script to a new powershell process in Administrator mode, run the following: 
+# 
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{   
+ $arguments = "& '" + $myinvocation.mycommand.definition + "'"	# call operator runs script stored in string; mycommand property holds path/name of script
+ Start-Process powershell -Verb runAs -ArgumentList $arguments
+  Start-Process powershell -Verb runAs
+ Break
+ }
+#
+# or...run following to elevate current privileges:
+# if (-not (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::Get‌​Current()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)))
+#
+#
+clear						# Clear screen buffer if needed
+
+
+
+<##### Block comment...enable logging
+     $Logfile = "D:\Apps\Logs\$(gc env:computername).log"
+
+     Function LogWrite
+     {
+        Param ([string]$logstring)
+        Add-content $Logfile -value $logstring
+     }
+     # Replace 'Write-host' calls with LogWrite
+#####>
+
+<##### Block comment...send Email notification
+#
+# Send Email to notify service is going down to allow DB maintenance...
+$EmailFrom = "William.Beyer@NationwideChildrens.org"
+#[string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<Michael.Bubenik@nationwidechildrens.org>,<wmbeyer@ameritech.net>"
+#[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>,<Thomas.Barr@nationwidechildrens.org>,<wmbeyer@ameritech.net>"
+#[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>"
+[string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<wmbeyer@ameritech.net>"
+$Subject = "VMVIPER2 MAINT: Full backup of VIPER2.0 production DB..." 
+$Body = @"
+NOTICE!  Commencing with full backup of production database for VIPER2.0 Pathology Review App.
+
+Thanks,
+Bill
+"@
+
+$SMTPServer = "hpc.osc.edu" 
+$SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
+$SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
+#
+#
+#$SMTPClient.Credentials = New-Object System.Net.NetworkCredential("user@domain.com", "password");
+#
+#####>
+ 
+$UserName = "research\aperio"  			# Use Research domain service account
+$Password = "Sc@nscope123" 
+# $Cred = Get-Credential 			# Prompt for user name and password 
+
+# $ServerN = $_.ServerName			# automatic (special) variable $_ - contains current pipeline object
+$ServerN= gc env:computername
+
+# VARIABLE ASSIGNMENTS TO SUIT APPLICATION
+$Service = "APImageService" 
+
+# read in data from csv file...optional use for controlling multiple services
+# Import-CSV C:\Scripts\stopApImgSvcDSR01.csv | % {  
+# $svcApDS=gwmi win32_service -computername $ServerN -filter "name='$service'" -Credential $Cred 
+# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$service'" -Credential $cred
+# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$Service'"
+
+$svcApIS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$Service'"
+$StopStatus = $svcApIS.StopService() 
+
+If ($StopStatus.ReturnValue -eq "0")		# validating status - http://msdn.microsoft.com/en-us/library/aa393673(v=vs.85).aspx 
+#If ($StopStatus.State -eq "Stopped")		# validating status - http://msdn.microsoft.com/en-us/library/aa393673(v=vs.85).aspx 
+     {write-host -foregroundcolor yellow "$ServerN -> $Service service successfully stopped"} 
+ElseIf ($StopStatus.ReturnValue -eq "2")
+     {write-host -foregroundcolor red "$ServerN -> $Service service cannot be stopped - access denied"} 
+Else
+     {write-host -foregroundcolor green"$ServerN -> Nuttin Happened"}
+
+# $ChangeStatus = $svcApDS.change($null,$null,$null,$null,$null,$null,$UserName,$Password,$null,$null,$null) 
+# If ($ChangeStatus.ReturnValue -eq "0")  
+#    {write-host "$ServerN -> Sucessfully Changed User Name"}
+# $StartStatus = $svcApDS.StartService() 
+# If ($ChangeStatus.ReturnValue -eq "0")  
+#    {write-host "$ServerN -> Service Started Successfully"} 
+# }

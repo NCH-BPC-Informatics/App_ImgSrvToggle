@@ -1,0 +1,169 @@
+# 2020.03.24 WMBeyer
+# 2020.03.30 Add start block
+# 2020.03.31 Add priority control of ImageServer process - set to AboveNormal
+#
+# Stop or Start execution of Aperio ImageServer (IS) on DSR (R1PWBPCIMGDSR01)
+#
+# Use MS Flow to place controls (buttons) on user workstation to operate script to start/stop ImageServer service
+#    IS ON control renders labels and thumbnails in eSlide Manager, assists VM team with adding slide metadata, 
+#	but IS places lock on image files in storage share, blocking moves/edits
+#    IS OFF control removes locks on image files to allow VM team rename files, move files into their preferred organizational hierarchy
+#
+#    | more
+# 
+# CMD: 'powershell' to start interpreter
+# CMD: 'exit' to return
+# Navigate to folder containing script
+# To execute as Powershell script, change extension to "ps1"
+# .\ImgSrvRemoteControl.ps1
+#
+# Make sure Execution Policy on system is set to allow script execution !!
+# i.e.  Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine 
+#
+# If current user not running elevated privileges, Powershell will not start in administrator mode.
+# To pass current script to a new powershell process in Administrator mode, run the following: 
+# 
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{   
+ $arguments = "& '" + $myinvocation.mycommand.definition + "'"	# call operator runs script stored in string; mycommand property holds path/name of script
+ Start-Process powershell -Verb runAs -ArgumentList $arguments
+  Start-Process powershell -Verb runAs
+ Break
+ }
+#
+# or...run following to elevate current privileges:
+# if (-not (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::Get‌​Current()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)))
+#
+#
+
+clear						# Clear screen buffer
+
+
+<##### Block comment...uncomment to enable logging
+     $Logfile = "D:\Apps\Logs\$(gc env:computername).log"
+
+     Function LogWrite
+     {
+        Param ([string]$logstring)
+        Add-content $Logfile -value $logstring
+     }
+     # Replace 'Write-host' calls with LogWrite
+#####>
+
+<##### Block comment...uncomment to send Email notification
+#
+# Send Email to notify service is going down to allow Image Archive maintenance...
+$EmailFrom = "William.Beyer@NationwideChildrens.org"
+#[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>,<Shital.Hobensack@nationwidechildrens.org>,<wmbeyer@ameritech.net>"
+[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>"
+#[string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<wmbeyer@ameritech.net>"
+$Subject = "R1PWBPCIMGDSR01 MAINT: Stopping ImageServer on production DSR..." 
+$Body = @"
+NOTICE!  Stopping Aperio ImageServer on imaging production DSR R1PWBPCIMGDSR01 to allow maintenance of Image Archive.
+
+Thanks,
+Bill
+"@
+
+$SMTPServer = "res2k3ms01.crii.org"
+$SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
+$SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
+#
+#
+#$SMTPClient.Credentials = New-Object System.Net.NetworkCredential("user@domain.com", "password");
+######>
+ 
+$UserName = "research\aperio"  			# Use Research domain service account
+$Password = "Sc@nscope123" 
+# $Cred = Get-Credential 			# Prompt for user name and password 
+
+# $ServerN = $_.ServerName			# automatic (special) variable $_ - contains current pipeline object
+$ServerN= gc env:computername
+
+# VARIABLE ASSIGNMENTS TO SUIT APPLICATION
+$Service = "ApImageService" 
+$svcApIS=Get-Service -Name $Service
+#$svsApISPriority=(Get-WmiObject Win32_process -filter "name = 'Imageserver.exe'").SetPriority(32768)
+#$svsApISPriorityReturnVal=$svsApISPriority.Priority
+
+# OPTIONAL: read in data from csv file...use for controlling multiple services
+# Import-CSV C:\Scripts\stopApImgSvcDSR01.csv | % {  
+# $svcApDS=gwmi win32_service -computername $ServerN -filter "name='$service'" -Credential $Cred 
+# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$service'" -Credential $cred
+# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$Service'"
+
+# Valid colors:Black, DarkBlue, DarkGreen, DarkCyan, DarkRed, DarkMagenta, DarkYellow, Gray,
+# DarkGray, Blue, Green, Cyan, Red, Magenta, Yellow, White
+
+#Check if START file exists on DSR in folder C:\ImgSrvControl
+If (Test-Path -LiteralPath C:\ImgSrvControl\start.txt -PathType Leaf) { 
+ 
+    write-host -foregroundcolor cyan "$ServerN -> ImageServer service status found: " $svcApIS.Status
+
+    #$svsApISPriority=(Get-WmiObject Win32_process -filter 'name="Imageserver.exe"').SetPriority(32768)
+    #$svsApISPriority=$svcApIS.SetPriority(32768)
+
+    If ($svcApIS.Status -eq "Stopped" -Or $svcApIS.Status -eq $null -Or $svcApIS.Status -eq "" ) {
+        Start-Service $svcApIS
+        write-host -foregroundcolor green "$ServerN -> Starting $Service service"
+        If ($svcApIS.Status -eq "Stopped" -Or $svcApIS.Status -eq $null -Or $svcApIS.Status -eq "" )
+            {write-host -foregroundcolor red "$ServerN -> $Service service cannot be started - access denied" }
+		sleep 5     # allow some time for service to start ImageServer process...
+	# Get Aperio ImageServer process ID 
+        $procIdApIS = Get-Process -Name ImageServer | select -expand id
+            write-host -foregroundcolor red "ImageServer process id = " $procIdApIS
+	# Get current ImageServer process priority
+            $svcApISPriority=(Get-process -Id $procIdApIS).PriorityClass
+            write-host -foregroundcolor red "Current ImageServer priority level = " $svcApISPriority
+
+        If ($svcApISPriority -eq "Normal") {
+            $svcApISPriority=(Get-WmiObject Win32_process -filter 'name="ImageServer.exe"' | foreach-object { $_.SetPriority(32768) })
+            write-host -foregroundcolor green "$ServerN -> ImageServer priority reset to 'AboveNormal'"}
+        Else
+            {write-host -foregroundcolor green "$ServerN -> ImageServer priority already set to 'AboveNormal'"}
+    } Else {
+        $procIdApIS = Get-Process -Name ImageServer | select -expand id
+            write-host -foregroundcolor red "current ImageServer process id = " $procIdApIS
+	# Get current ImageServer process priority
+            $svcApISPriority=(Get-process -Id $procIdApIS).PriorityClass
+            write-host -foregroundcolor red "Current ImageServer priority level = " $svcApISPriority
+
+        If ($svcApISPriority -eq "Normal") {
+            $svcApISPriority=(Get-WmiObject Win32_process -filter 'name="ImageServer.exe"' | foreach-object { $_.SetPriority(32768) })
+            write-host -foregroundcolor green "$ServerN -> ImageServer priority reset to 'AboveNormal'"}
+        Else
+            {write-host -foregroundcolor green "$ServerN -> ImageServer priority already set to 'AboveNormal'"
+             write-host -foregroundcolor green "$ServerN -> Service was already running! "}
+    }
+} ElseIf (Test-Path -LiteralPath C:\ImgSrvControl\stop.txt -PathType Leaf) {
+    write-host -foregroundcolor cyan "$ServerN -> ImageServer service status found: " $svcApIS.Status
+
+    If ($svcApIS.Status -eq "Stopped" -Or $svcApIS.Status -eq $null -Or $svcApIS.Status -eq "" ) {
+        write-host -foregroundcolor green "$ServerN -> $Service service already stopped"
+    } Else {
+        write-host -foregroundcolor green "$ServerN -> Stopping $Service service"
+        Stop-Service $svcApIS
+        If ($svcApIS.Status -eq "Stopped" -Or $svcApIS.Status -eq $null -Or $svcApIS.Status -eq "" )
+            {write-host -foregroundcolor yellow "$ServerN -> $Service service successfully stopped"}
+    -}
+} Else {
+    write-host -foregroundcolor yellow "No control file found to manage ImageServer service"
+}
+
+# The accepted values for the priority class are Idle, BelowNormal, Normal, AboveNormal, High, RealTime
+# ProcessPriorityClass.AboveNormal
+# Get-WmiObject Win32_process -filter 'name = "Imageserver.exe"' | { $_.SetPriority(32768) }
+# Priority codes:
+# 256 REALTIME
+# 128 HIGH_PRIORITY
+# 32768 ABOVE_NORMAL
+# 32 NORMAL
+# 16384 BELOW_NORMAL
+# 64 IDLE
+
+# $ChangeStatus = $svcApDS.change($null,$null,$null,$null,$null,$null,$UserName,$Password,$null,$null,$null) 
+# If ($ChangeStatus.ReturnValue -eq "0")  
+#    {write-host "$ServerN -> Sucessfully Changed User Name"}
+# $StartStatus = $svcApDS.StartService() 
+# If ($ChangeStatus.ReturnValue -eq "0")  
+#    {write-host "$ServerN -> Service Started Successfully"}

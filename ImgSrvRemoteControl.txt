@@ -1,102 +1,84 @@
-# Stop or Start execution of Aperio ImageServer (IS) on DSR (R1PWBPCIMGDSR01).
-# IS ON renders labels and thumbnails in eSlide Manager, assists VM team with adding slide metadata, 
-#	but places lock on image file in storage share, blocking moves/edits
-# IS OFF removes lock on image files to allow VM team rename files, move files into their preferred organizational hierarchy
-#
-# | more
-# 
-# CMD: 'powershell' to start interpreter
-# CMD: 'exit' to return
-# To execute as Powershell script, change extension to "ps1"
-#
-# Make sure Execution Policy on system is set to allow script execution !!
-#
-# If current user not running elevated privileges, Powershell will not start in administrator mode.
-# To pass current script to a new powershell process in Administrator mode, run the following: 
-# 
-If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-{   
- $arguments = "& '" + $myinvocation.mycommand.definition + "'"	# call operator runs script stored in string; mycommand property holds path/name of script
- Start-Process powershell -Verb runAs -ArgumentList $arguments
-  Start-Process powershell -Verb runAs
- Break
- }
-#
-# or...run following to elevate current privileges:
-# if (-not (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::Get‌​Current()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)))
-#
-#
-clear						# Clear screen buffer if needed
+<####
 
+# Call NSSM from Powershell prompt to install start/stop script as service
+$nssm = (Get-Command "C:\NSSM\nssm-2.24\win64\nssm.exe").Source
+$serviceName = 'ImgSrvControl'
+$powershellpath = (Get-Command powershell).Source
+$scriptPath = 'C:\ImgSrvControl\ImgSrvStartStop.ps1'
+$arguments = '-ExecutionPolicy Bypass -NoProfile -File "{0}"' -f $scriptPath
+& $nssm install $serviceName $powershellpath $arguments
+& $nssm status $serviceName
+Start-Service $serviceName
+Get-Service $serviceName
 
+#Remove-Service -Name "ImgSrvControl"
 
-<##### Block comment...enable logging
-     $Logfile = "D:\Apps\Logs\$(gc env:computername).log"
+####>
 
-     Function LogWrite
-     {
-        Param ([string]$logstring)
-        Add-content $Logfile -value $logstring
-     }
-     # Replace 'Write-host' calls with LogWrite
-#####>
+$watcher = New-Object System.IO.FileSystemWatcher
+#$watcher.Path = "\\crii.org\shares\Research\RESBPC_Digital_Imaging_Core\Flag Files"
+$watcher.Path = "C:\ImgSrvControl\FlagFiles"
+$watcher.Filter = "*.flag"
+$watcher.EnableRaisingEvents = $true  
 
-<##### Block comment...send Email notification
-#
-# Send Email to notify service is going down to allow DB maintenance...
-$EmailFrom = "William.Beyer@NationwideChildrens.org"
-#[string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<Michael.Bubenik@nationwidechildrens.org>,<wmbeyer@ameritech.net>"
-#[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>,<Thomas.Barr@nationwidechildrens.org>,<wmbeyer@ameritech.net>"
-#[string[]]$EmailTo = "<William.Beyer@NationwideChildrens.org>"
-[string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<wmbeyer@ameritech.net>"
-$Subject = "VMVIPER2 MAINT: Full backup of VIPER2.0 production DB..." 
-$Body = @"
-NOTICE!  Commencing with full backup of production database for VIPER2.0 Pathology Review App.
+$action = { 
+	$flag_path = $Event.SourceEventArgs.FullPath
+	$logline = "$(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $(Get-Content -Path $flag_path)"
+       #Add-Content ("\\crii.org\shares\Research\RESBPC_Digital_Imaging_Core\Flag Files\log.txt") ($logline)
+        Add-Content ("C:\ImgSrvControl\log.txt") ($logline)
+	#
+	# DO STUFF HERE (case/switch to decide and act; e.g stop service)
+		If (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\stop.flag -PathType Leaf) {
+		    write-host -foregroundcolor yellow "Stopping ImageServer service"
+            Stop-Service ApImageService
+			
+			write-host -foregroundcolor cyan "Sending Email notification - stopping ImageServer"
+	
+          # EMAIL NOTIFICATION
+          # Send Email to notify service is going down to allow Image Archive maintenance...
+            $EmailFrom = "BPCInformatics@NationwideChildrens.org"
+            $EmailTo = "<William.Beyer@NationwideChildrens.org>"
+          # [string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<william.Beyer@NationwideChildrens.org>"
+            $Subject = "R1PWBPCIMGDSR01 MAINT: Stopping ImageServer on production DSR..." 
+            $Body = "NOTICE!  Stopping Aperio ImageServer on imaging production DSR R1PWBPCIMGDSR01 to allow maintenance of Image Archive.
 
-Thanks,
-Bill
-"@
+            Thanks,
+            BPC-Informatics
+	        "
 
-$SMTPServer = "hpc.osc.edu" 
-$SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
-$SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
-#
-#
-#$SMTPClient.Credentials = New-Object System.Net.NetworkCredential("user@domain.com", "password");
-#
-#####>
- 
-$UserName = "research\aperio"  			# Use Research domain service account
-$Password = "Sc@nscope123" 
-# $Cred = Get-Credential 			# Prompt for user name and password 
+            $SMTPServer = "res2k3ms01.crii.org"
+            $SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
+            $SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
+			
+		} elseif (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\start.flag -PathType Leaf) {
+            write-host -foregroundcolor green "Starting ImageServer service"
+            Start-Service ApImageService
+			
+            write-host -foregroundcolor cyan "Sending Email notification - starting ImageServer"
+	
+          # EMAIL NOTIFICATION
+          # Send Email to notify service is going down to allow Image Archive maintenance...
+            $EmailFrom = "BPCInformatics@NationwideChildrens.org"
+            $EmailTo = "<William.Beyer@NationwideChildrens.org>"
+          # [string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<william.Beyer@NationwideChildrens.org>"
+            $Subject = "R1PWBPCIMGDSR01 MAINT: Starting ImageServer on production DSR..." 
+            $Body = "NOTICE!  Starting Aperio ImageServer on imaging production DSR R1PWBPCIMGDSR01 following maintenance of Image Archive.
 
-# $ServerN = $_.ServerName			# automatic (special) variable $_ - contains current pipeline object
-$ServerN= gc env:computername
+            Thanks,
+            BPC-Informatics
+	        "
 
-# VARIABLE ASSIGNMENTS TO SUIT APPLICATION
-$Service = "APImageService" 
-
-# read in data from csv file...optional use for controlling multiple services
-# Import-CSV C:\Scripts\stopApImgSvcDSR01.csv | % {  
-# $svcApDS=gwmi win32_service -computername $ServerN -filter "name='$service'" -Credential $Cred 
-# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$service'" -Credential $cred
-# $svcApDS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$Service'"
-
-$svcApIS=Get-WmiObject Win32_Service -computername $ServerN -filter "name='$Service'"
-$StopStatus = $svcApIS.StopService() 
-
-If ($StopStatus.ReturnValue -eq "0")		# validating status - http://msdn.microsoft.com/en-us/library/aa393673(v=vs.85).aspx 
-#If ($StopStatus.State -eq "Stopped")		# validating status - http://msdn.microsoft.com/en-us/library/aa393673(v=vs.85).aspx 
-     {write-host -foregroundcolor yellow "$ServerN -> $Service service successfully stopped"} 
-ElseIf ($StopStatus.ReturnValue -eq "2")
-     {write-host -foregroundcolor red "$ServerN -> $Service service cannot be stopped - access denied"} 
-Else
-     {write-host -foregroundcolor green"$ServerN -> Nuttin Happened"}
-
-# $ChangeStatus = $svcApDS.change($null,$null,$null,$null,$null,$null,$UserName,$Password,$null,$null,$null) 
-# If ($ChangeStatus.ReturnValue -eq "0")  
-#    {write-host "$ServerN -> Sucessfully Changed User Name"}
-# $StartStatus = $svcApDS.StartService() 
-# If ($ChangeStatus.ReturnValue -eq "0")  
-#    {write-host "$ServerN -> Service Started Successfully"} 
-# }
+            $SMTPServer = "res2k3ms01.crii.org"
+            $SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
+            $SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
+		}
+		else {
+		    write-host -foregroundcolor green "No flag file found"
+		}
+	#
+	Remove-Item -Path $flag_path
+}
+Get-Service ApImageService
+Register-ObjectEvent $watcher "Created" -Action $action
+Write-Output "Listening for '$($watcher.Filter)' in '$($watcher.Path)'..."
+while ($true) {sleep 3}

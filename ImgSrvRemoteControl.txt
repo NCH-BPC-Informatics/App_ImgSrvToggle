@@ -22,35 +22,36 @@ $watcher.Filter = "*.flag"
 $watcher.EnableRaisingEvents = $true  
 
 $action = { 
-	$flag_path = $Event.SourceEventArgs.FullPath
-	$logline = "$(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $(Get-Content -Path $flag_path)"
+    $flag_path = $Event.SourceEventArgs.FullPath
+    $logline = "$(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $(Get-Content -Path $flag_path)"
        #Add-Content ("\\crii.org\shares\Research\RESBPC_Digital_Imaging_Core\Flag Files\log.txt") ($logline)
         Add-Content ("C:\ImgSrvControl\log.txt") ($logline)
-	#
-	# DO STUFF HERE (case/switch to decide and act; e.g stop service)
-		If (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\stop.flag -PathType Leaf) {
-		    write-host -foregroundcolor yellow "Stopping ImageServer service"
+    #
+    # DO STUFF HERE (case/switch to decide and act; e.g stop service)
+        If (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\stop.flag -PathType Leaf) {
+            write-host -foregroundcolor yellow "Stopping ImageServer service"
             Stop-Service ApImageService
-			
-			write-host -foregroundcolor cyan "Sending Email notification - stopping ImageServer"
+
+            write-host -foregroundcolor cyan "Sending Email notification - stopping ImageServer"
 	
-          # EMAIL NOTIFICATION
+        # EMAIL NOTIFICATION
           # Send Email to notify service is going down to allow Image Archive maintenance...
             $EmailFrom = "BPCInformatics@NationwideChildrens.org"
-            $EmailTo = "<William.Beyer@NationwideChildrens.org>"
+          # $EmailTo = "<William.Beyer@NationwideChildrens.org,
+            $EmailTo = "<William.Beyer@NationwideChildrens.org, Jason.Weis@NationwideChildrens.org>"
           # [string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<william.Beyer@NationwideChildrens.org>"
-            $Subject = "R1PWBPCIMGDSR01 MAINT: Stopping ImageServer on production DSR..." 
-            $Body = "NOTICE!  Stopping Aperio ImageServer on imaging production DSR R1PWBPCIMGDSR01 to allow maintenance of Image Archive.
+            $Subject = "R1DWBPCIMGDSR01 MAINT: Stopping ImageServer on development DSR..." 
+            $Body = "NOTICE!  Stopping Aperio ImageServer on imaging development DSR R1DWBPCIMGDSR01 to allow maintenance of Image Archive.
 
             Thanks,
             BPC-Informatics
-	        "
+            "
 
             $SMTPServer = "res2k3ms01.crii.org"
             $SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
             $SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
-			
-		} elseif (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\start.flag -PathType Leaf) {
+
+        } elseif (Test-Path -LiteralPath C:\ImgSrvControl\FlagFiles\start.flag -PathType Leaf) {
             write-host -foregroundcolor green "Starting ImageServer service"
             Start-Service ApImageService
 			
@@ -61,22 +62,22 @@ $action = {
             $EmailFrom = "BPCInformatics@NationwideChildrens.org"
             $EmailTo = "<William.Beyer@NationwideChildrens.org>"
           # [string[]]$EmailTo = "<VMWorkingGroup@NationwideChildrens.org>,<william.Beyer@NationwideChildrens.org>"
-            $Subject = "R1PWBPCIMGDSR01 MAINT: Starting ImageServer on production DSR..." 
-            $Body = "NOTICE!  Starting Aperio ImageServer on imaging production DSR R1PWBPCIMGDSR01 following maintenance of Image Archive.
+            $Subject = "R1DWBPCIMGDSR01 MAINT: Starting ImageServer on development DSR..." 
+            $Body = "NOTICE!  Starting Aperio ImageServer on imaging development DSR R1DWBPCIMGDSR01 following maintenance of Image Archive.
 
             Thanks,
             BPC-Informatics
-	        "
+            "
 
             $SMTPServer = "res2k3ms01.crii.org"
             $SMTPClient = New-Object Net.Mail.SmtpClient($SmtpServer) 
             $SMTPClient.Send($EmailFrom, $EmailTo, $Subject, $Body)
-		}
-		else {
-		    write-host -foregroundcolor green "No flag file found"
-		}
-	#
-	Remove-Item -Path $flag_path
+        }
+        else {
+            write-host -foregroundcolor green "No flag file found"
+        }
+    #
+    Remove-Item -Path $flag_path
 }
 Get-Service ApImageService
 Register-ObjectEvent $watcher "Created" -Action $action

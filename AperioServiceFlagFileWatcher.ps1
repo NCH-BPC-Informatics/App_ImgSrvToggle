@@ -8,19 +8,23 @@ $watcher.EnableRaisingEvents = $true
 $action = { 
     $flag_path = $Event.SourceEventArgs.FullPath
     $userRequested = $(Get-Content -Path $flag_path)
-    $logline = "$(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $userRequested"
+    $logline = "INFO - $(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $userRequested"
     Add-Content ("$watcherPath\log.txt") ($logline)
 
-    If ($flag_path.EndsWith('stop.flag')) {
+	$fileName = Split-Path -Path $flag_path -Leaf
+	
+    If ($fileName == 'ImageServerStop.flag') {
         write-host -foregroundcolor yellow "Stopping ImageServer service"
         Stop-Service ApImageService
 		Remove-Item -Path $flag_path
-    } elseif ($flag_path.EndsWith('start.flag')) {
+    } elseif ($fileName == 'ImageServerStart.flag')) {
         write-host -foregroundcolor green "Starting ImageServer service"
         Start-Service ApImageService
 		Remove-Item -Path $flag_path
     } else {
-        write-host -foregroundcolor yellow "Unknown flag file: $flag_path"
+		$logline = "ERROR - $(Get-Date); Unknown flag file $fileName"
+		Add-Content ("$watcherPath\log.txt") ($logline)
+        write-host -foregroundcolor yellow $logline
     }
 }
 

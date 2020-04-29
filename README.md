@@ -5,4 +5,4 @@ This repo contains the code to create a flag file watcher on DSR. The watcher to
 ## Installation
 1. Install [NSSM](https://nssm.cc/to) `C:\NSSM`
 1. Clone this repo to `C:\App_ImgSrvToggle`
-1. Run `ServiceInstaller.ps1` to create a Windows service to watch for flags
+1. Run `ServiceInstaller.ps1` in an elevated PowerShell window to create a Windows service to watch for flags

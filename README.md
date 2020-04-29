@@ -11,3 +11,11 @@ This repo contains the code to create a flag file watcher on DSR. The watcher to
  - `AperioImageServerToggle.bat` the client piece that creates flag files
  - `AperioServiceFlagFileWatcher.ps1` a watcher script to watch for the flag files
  - `ServiceInstaller.ps1` a script that creates a Windows Service of the file watcher
+
+## Helpful Commands
+During troubleshooting you may need to run the service as both:
+1. The service account, since it can see research shares but you cannot
+1. Elevated powershell, to manage services.
+```
+Start-Process powershell.exe -Credential "HOSPITAL\SA_BPCImageScanning" -ArgumentList "Start-Process powershell.exe -Verb runAs"
+```

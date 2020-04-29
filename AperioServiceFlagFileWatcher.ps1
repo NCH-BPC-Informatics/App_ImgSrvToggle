@@ -11,19 +11,23 @@ $action = {
     $logline = "INFO - $(Get-Date); Found flag file $($Event.SourceEventArgs.ChangeType): $flag_path; Contents: $userRequested"
     Add-Content ("$watcherPath\log.txt") ($logline)
 
-	$fileName = Split-Path -Path $flag_path -Leaf
-	
-    If ($fileName == 'ImageServerStop.flag') {
-        write-host -foregroundcolor yellow "Stopping ImageServer service"
+    $fileName = Split-Path -Path $flag_path -Leaf
+    
+    If ($fileName -eq 'ImageServerStop.flag') {
+        $logline = "INFO - $(Get-Date); Stopping ImageServer service"
+        Add-Content ("$watcherPath\log.txt") ($logline)
+        write-host -foregroundcolor yellow $logline
         Stop-Service ApImageService
-		Remove-Item -Path $flag_path
-    } elseif ($fileName == 'ImageServerStart.flag')) {
-        write-host -foregroundcolor green "Starting ImageServer service"
+        Remove-Item -Path $flag_path
+    } elseif ($fileName -eq 'ImageServerStart.flag') {
+        $logline = "INFO - $(Get-Date); Starting ImageServer service"
+        Add-Content ("$watcherPath\log.txt") ($logline)
+        write-host -foregroundcolor yellow $logline
         Start-Service ApImageService
-		Remove-Item -Path $flag_path
+        Remove-Item -Path $flag_path
     } else {
-		$logline = "ERROR - $(Get-Date); Unknown flag file $fileName"
-		Add-Content ("$watcherPath\log.txt") ($logline)
+        $logline = "ERROR - $(Get-Date); Unknown flag file $fileName"
+        Add-Content ("$watcherPath\log.txt") ($logline)
         write-host -foregroundcolor yellow $logline
     }
 }
